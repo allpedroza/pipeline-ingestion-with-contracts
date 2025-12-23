@@ -247,6 +247,190 @@ contract_path = session.run_from_dict({
 
 ---
 
+## 🧠 Agente com IA (Claude)
+
+Para uma experiência ainda mais inteligente, use o **Agente AI** que utiliza Claude para entender suas necessidades em linguagem natural e sugerir contratos completos automaticamente.
+
+### Configuração da API Key
+
+1. **Obtenha sua API Key**
+   - Acesse [console.anthropic.com](https://console.anthropic.com/)
+   - Crie uma conta ou faça login
+   - Vá em **API Keys** e crie uma nova chave
+
+2. **Configure a variável de ambiente**
+
+```bash
+# Linux / macOS
+export ANTHROPIC_API_KEY='sk-ant-api03-...'
+
+# Para persistir, adicione ao seu ~/.bashrc ou ~/.zshrc
+echo 'export ANTHROPIC_API_KEY="sk-ant-api03-..."' >> ~/.bashrc
+
+# Windows (PowerShell)
+$env:ANTHROPIC_API_KEY = "sk-ant-api03-..."
+
+# Windows (CMD)
+set ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+3. **Instale a dependência** (se não usar `pip install -e ".[dev]"`)
+
+```bash
+pip install anthropic
+# ou
+pip install pipeline-contracts[llm]
+```
+
+### Usando o Agente AI
+
+```bash
+# Modo interativo (chat)
+pipeline agent ai
+
+# Modo direto com descrição
+pipeline agent ai -d "dados de pedidos de e-commerce com produtos e clientes"
+
+# Usando modelo diferente (Sonnet para casos complexos)
+pipeline agent ai --model claude-3-5-sonnet-latest
+```
+
+### Exemplo de Sessão AI
+
+```bash
+$ pipeline agent ai
+
+╔══════════════════════════════════════════════════════════════════╗
+║        🤖 AGENTE IA PARA CRIAÇÃO DE CONTRATOS DE DADOS           ║
+╚══════════════════════════════════════════════════════════════════╝
+
+💡 Exemplos de como iniciar:
+  • "Preciso de um contrato para dados de pedidos de e-commerce"
+  • "Crie um contrato para eventos de clique no site"
+  • "Quero validar dados de cadastro de clientes com CPF e email"
+
+Você: Preciso de um contrato para dados de transações financeiras
+
+🤖 Pensando...
+
+Vou criar um contrato completo para transações financeiras.
+Baseado nas melhores práticas do setor, sugiro os seguintes campos:
+
+```yaml
+name: financial_transactions
+version: "1.0.0"
+description: Contrato para dados de transações financeiras
+owner: finance-data-team
+domain: finance
+tags:
+  - transactions
+  - financial
+  - core
+  - pii
+
+fields:
+  - name: transaction_id
+    data_type: string
+    nullable: false
+    unique: true
+    pattern: "^TXN-[A-Z0-9]{12}$"
+    description: Identificador único da transação
+
+  - name: account_id
+    data_type: string
+    nullable: false
+    description: ID da conta origem
+
+  - name: amount
+    data_type: float
+    nullable: false
+    min_value: 0.01
+    description: Valor da transação em BRL
+
+  - name: transaction_type
+    data_type: string
+    nullable: false
+    allowed_values: [credit, debit, transfer, payment, refund]
+    description: Tipo da transação
+
+  - name: status
+    data_type: string
+    nullable: false
+    allowed_values: [pending, completed, failed, cancelled]
+    description: Status da transação
+
+  - name: created_at
+    data_type: datetime
+    nullable: false
+    description: Data e hora da transação
+
+min_rows: 100
+freshness_hours: 1
+```
+
+Esse contrato inclui validações de PII e constraints financeiros.
+Deseja ajustar algo?
+
+💾 Contrato detectado! Use /salvar para salvar.
+
+Você: /salvar
+
+Nome do arquivo [financial_transactions.yaml]:
+
+✅ Contrato salvo em: contracts/financial_transactions.yaml
+```
+
+### Comandos Especiais no Chat
+
+| Comando | Descrição |
+|---------|-----------|
+| `/salvar` | Salva o último contrato gerado |
+| `/reset` | Reinicia a conversa |
+| `/sair` | Encerra a sessão |
+| `/help` | Mostra exemplos de uso |
+
+### Comparação: Regras vs IA
+
+| Aspecto | `pipeline agent create` | `pipeline agent ai` |
+|---------|------------------------|---------------------|
+| **Abordagem** | Perguntas guiadas | Conversa natural |
+| **Input** | Responder cada pergunta | Descrever caso de uso |
+| **Inferência** | Nenhuma | Sugere campos automaticamente |
+| **Custo** | Gratuito | ~$0.001 por contrato |
+| **Offline** | Sim | Não (requer API) |
+| **Melhor para** | Contratos simples | Contratos complexos |
+
+### Modelos Disponíveis
+
+| Modelo | Custo | Velocidade | Quando usar |
+|--------|-------|------------|-------------|
+| `claude-3-5-haiku-latest` | Baixo (~$0.001) | Muito rápido | Padrão, maioria dos casos |
+| `claude-3-5-sonnet-latest` | Médio (~$0.01) | Rápido | Contratos complexos |
+
+### Uso Programático (AI)
+
+```python
+from pipeline_contracts.agents import LLMContractAgent, LLMContractSession
+from pathlib import Path
+
+# Sessão interativa
+session = LLMContractSession(output_dir=Path("contracts"))
+session.run()
+
+# Geração direta a partir de descrição
+session = LLMContractSession(output_dir=Path("contracts"))
+response, saved_path = session.generate_from_description(
+    "dados de pedidos e-commerce com produtos, quantidades e valores"
+)
+
+# Uso direto do agente (para integração customizada)
+agent = LLMContractAgent()
+response = agent.chat("Crie um contrato para logs de aplicação")
+yaml_content = agent.extract_yaml_from_response(response)
+```
+
+---
+
 ## 🚀 Quick Start
 
 ### 1. Crie um Contrato com o Agente
@@ -347,9 +531,11 @@ print(f"Rows: {len(result.final_data)}")
 ```
 pipeline-contracts/
 ├── src/pipeline_contracts/
-│   ├── agents/              # 🤖 Contract Creator Agent
-│   │   ├── contract_creator.py   # Core logic
-│   │   ├── interactive_session.py # Terminal UI
+│   ├── agents/              # 🤖 Contract Creator Agents
+│   │   ├── contract_creator.py   # Rule-based agent logic
+│   │   ├── interactive_session.py # Terminal UI (rules)
+│   │   ├── llm_agent.py          # 🧠 AI agent (Claude)
+│   │   ├── llm_session.py        # Terminal UI (AI)
 │   │   ├── prompts.py            # Questions & patterns
 │   │   └── cli.py                # Agent CLI
 │   ├── contracts/           # Data Contracts
@@ -418,10 +604,14 @@ fields:
 ### Comandos CLI
 
 ```bash
-# Agente de contratos
+# Agente de contratos (baseado em regras)
 pipeline agent create          # Criar contrato interativamente
 pipeline agent list-types      # Listar tipos de dados
 pipeline agent list-patterns   # Listar padrões de validação
+
+# Agente AI (baseado em Claude)
+pipeline agent ai              # Chat interativo com IA
+pipeline agent ai -d "..."     # Gerar direto de descrição
 
 # Validação
 pipeline validate contract.yaml data.csv
@@ -440,7 +630,8 @@ make help       # Lista todos os comandos
 make setup      # Setup completo do ambiente
 make test       # Rodar testes
 make lint       # Verificar código
-make agent      # Iniciar agente de contratos
+make agent      # Iniciar agente de contratos (regras)
+make agent-ai   # Iniciar agente AI (Claude)
 make clean      # Limpar arquivos temporários
 ```
 
@@ -498,6 +689,7 @@ pytest tests/ -v
 - **[Pandas](https://pandas.pydata.org/)**: Manipulação de dados
 - **[Rich](https://rich.readthedocs.io/)**: Output formatado no terminal
 - **[Typer](https://typer.tiangolo.com/)**: CLI interface
+- **[Anthropic](https://docs.anthropic.com/)**: API Claude para agente AI (opcional)
 - **[uv](https://github.com/astral-sh/uv)**: Gerenciamento de ambiente (opcional)
 
 ---
