@@ -1,6 +1,7 @@
 # Pipeline Contracts
 
 Framework para ingestão de pipelines de dados com **Data Contracts** e testes de integridade.
+**Nova feature: LLM Agent criador de Data Contract**
 
 ## 🎯 Objetivo
 
