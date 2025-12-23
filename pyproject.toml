@@ -44,6 +44,7 @@ dev = [
 
 [project.scripts]
 pipeline = "pipeline_contracts.cli:app"
+contract-agent = "pipeline_contracts.agents.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
