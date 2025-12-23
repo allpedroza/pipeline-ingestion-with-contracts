@@ -2,9 +2,10 @@
 LLM-based Contract Creator Agent
 
 Uses Claude to intelligently create data contracts from natural language descriptions.
+The system prompt is generated dynamically from the actual Pydantic models,
+ensuring consistency between code and documentation.
 """
 
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,97 +13,7 @@ from typing import Optional
 
 import yaml
 
-# System prompt for the contract creator agent
-SYSTEM_PROMPT = """Você é um especialista em Data Contracts e engenharia de dados. Sua função é ajudar usuários a criar contratos de dados completos e bem estruturados.
-
-## Seu Conhecimento
-
-Você conhece profundamente a estrutura de Data Contracts:
-
-### Metadados do Contrato
-- name: identificador único (snake_case)
-- version: versionamento semântico (ex: "1.0.0")
-- description: descrição do propósito
-- owner: equipe ou pessoa responsável
-- domain: domínio de negócio (customers, commerce, finance, marketing, operations, products, analytics, hr, logistics)
-- tags: lista de tags para categorização (ex: pii, core, derived, raw)
-
-### Campos (fields)
-Cada campo possui:
-- name: nome do campo (snake_case)
-- data_type: string, integer, float, boolean, date, datetime, array, object
-- nullable: true/false (pode ser nulo?)
-- unique: true/false (valores únicos?)
-- description: descrição do campo
-- quality_level: critical (falha pipeline), warning (apenas aviso), info (informativo)
-
-Constraints específicos por tipo:
-- Numéricos (integer, float): min_value, max_value
-- Strings: min_length, max_length, pattern (regex)
-- Todos: allowed_values (lista de valores permitidos)
-
-### Regras de Integridade
-- min_rows: número mínimo de registros esperados
-- max_rows: número máximo de registros esperados
-- freshness_hours: idade máxima dos dados em horas (SLA)
-
-### Padrões de Validação Comuns
-- Email: ^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$
-- CPF: ^\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}$|^\\d{11}$
-- CNPJ: ^\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2}$|^\\d{14}$
-- UUID: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
-- URL: ^https?://[^\\s/$.?#].[^\\s]*$
-- CEP: ^\\d{5}-?\\d{3}$
-- Telefone: ^\\+?[\\d\\s\\-\\(\\)]{10,}$
-
-## Seu Comportamento
-
-1. Quando o usuário descrever um caso de uso, você deve:
-   - Inferir os campos típicos para aquele domínio
-   - Sugerir tipos de dados apropriados
-   - Adicionar constraints relevantes (patterns para emails, min/max para valores, etc.)
-   - Sugerir campos comuns que o usuário pode ter esquecido
-
-2. Sempre pergunte sobre:
-   - Owner/responsável pelo contrato
-   - Se há campos sensíveis (PII)
-   - SLAs de freshness se aplicável
-
-3. Forneça o contrato em formato YAML válido dentro de um bloco de código.
-
-4. Seja proativo em sugerir melhorias e boas práticas.
-
-## Formato de Resposta
-
-Quando gerar um contrato, use exatamente este formato YAML:
-
-```yaml
-name: nome_do_contrato
-version: "1.0.0"
-description: Descrição clara do contrato
-owner: equipe-responsavel
-domain: dominio
-tags:
-  - tag1
-  - tag2
-
-fields:
-  - name: campo1
-    data_type: tipo
-    nullable: false
-    unique: true
-    description: Descrição do campo
-
-  - name: campo2
-    data_type: tipo
-    nullable: true
-    description: Descrição do campo
-
-min_rows: 1
-freshness_hours: 24
-```
-
-Sempre inclua TODOS os campos necessários, com descrições claras e constraints apropriados."""
+from .schema_docs import get_system_prompt
 
 
 @dataclass
@@ -119,6 +30,10 @@ class LLMContractAgent:
 
     Uses Claude to understand natural language descriptions and generate
     complete, well-structured data contracts.
+
+    The system prompt is generated dynamically from the Pydantic models
+    (DataContract, FieldContract, DataType, QualityLevel), ensuring the
+    LLM always has accurate information about the current schema structure.
     """
 
     def __init__(
@@ -142,6 +57,8 @@ class LLMContractAgent:
         self.config = config or LLMConfig()
         self.conversation_history: list[dict] = []
         self._client = None
+        # Get system prompt dynamically from schema
+        self._system_prompt = get_system_prompt()
 
     @property
     def client(self):
@@ -156,6 +73,16 @@ class LLMContractAgent:
                     "Instale com: pip install anthropic"
                 )
         return self._client
+
+    @property
+    def system_prompt(self) -> str:
+        """Get the system prompt (generated from schema)."""
+        return self._system_prompt
+
+    def refresh_system_prompt(self) -> None:
+        """Refresh the system prompt from the current schema."""
+        from .schema_docs import refresh_system_prompt
+        self._system_prompt = refresh_system_prompt()
 
     def chat(self, user_message: str) -> str:
         """
@@ -176,7 +103,7 @@ class LLMContractAgent:
             model=self.config.model,
             max_tokens=self.config.max_tokens,
             temperature=self.config.temperature,
-            system=SYSTEM_PROMPT,
+            system=self._system_prompt,
             messages=self.conversation_history,
         )
 
