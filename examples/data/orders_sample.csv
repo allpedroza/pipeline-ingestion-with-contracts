@@ -1,0 +1,6 @@
+order_id,user_id,product_id,quantity,unit_price,total_amount,status,order_date
+ORD-ABC12345,1,PROD-001,2,29.99,59.98,confirmed,2024-06-01 10:30:00
+ORD-DEF67890,2,PROD-002,1,149.99,149.99,shipped,2024-06-02 14:15:00
+ORD-GHI11111,1,PROD-003,3,9.99,29.97,delivered,2024-06-03 09:00:00
+ORD-JKL22222,3,PROD-001,5,29.99,149.95,pending,2024-06-04 16:45:00
+ORD-MNO33333,4,PROD-004,1,299.99,299.99,cancelled,2024-06-05 11:30:00

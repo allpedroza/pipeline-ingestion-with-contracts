@@ -1,0 +1,65 @@
+name: orders
+version: "1.0.0"
+description: Order data contract for e-commerce pipeline
+owner: data-platform-team
+domain: commerce
+tags:
+  - orders
+  - transactions
+  - core
+
+fields:
+  - name: order_id
+    data_type: string
+    nullable: false
+    unique: true
+    pattern: "^ORD-[A-Z0-9]{8}$"
+    description: Unique order identifier (format ORD-XXXXXXXX)
+
+  - name: user_id
+    data_type: integer
+    nullable: false
+    description: Reference to user who placed the order
+
+  - name: product_id
+    data_type: string
+    nullable: false
+    description: Product identifier
+
+  - name: quantity
+    data_type: integer
+    nullable: false
+    min_value: 1
+    max_value: 1000
+    description: Quantity ordered
+
+  - name: unit_price
+    data_type: float
+    nullable: false
+    min_value: 0.01
+    description: Price per unit in USD
+
+  - name: total_amount
+    data_type: float
+    nullable: false
+    min_value: 0.01
+    description: Total order amount in USD
+
+  - name: status
+    data_type: string
+    nullable: false
+    allowed_values:
+      - pending
+      - confirmed
+      - shipped
+      - delivered
+      - cancelled
+      - refunded
+    description: Order status
+
+  - name: order_date
+    data_type: datetime
+    nullable: false
+    description: Date and time when order was placed
+
+min_rows: 0

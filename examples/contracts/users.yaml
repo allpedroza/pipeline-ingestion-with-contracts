@@ -1,0 +1,62 @@
+name: users
+version: "1.0.0"
+description: User data contract for customer pipeline
+owner: data-platform-team
+domain: customers
+tags:
+  - pii
+  - customers
+  - core
+
+fields:
+  - name: user_id
+    data_type: integer
+    nullable: false
+    unique: true
+    description: Unique user identifier
+
+  - name: email
+    data_type: string
+    nullable: false
+    pattern: "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
+    max_length: 255
+    description: User email address (validated format)
+
+  - name: name
+    data_type: string
+    nullable: false
+    min_length: 1
+    max_length: 100
+    description: User full name
+
+  - name: age
+    data_type: integer
+    nullable: true
+    min_value: 0
+    max_value: 150
+    quality_level: warning
+    description: User age in years
+
+  - name: country
+    data_type: string
+    nullable: true
+    max_length: 100
+    description: User country of residence
+
+  - name: status
+    data_type: string
+    nullable: false
+    allowed_values:
+      - active
+      - inactive
+      - pending
+      - suspended
+    description: User account status
+
+  - name: created_at
+    data_type: datetime
+    nullable: false
+    description: Account creation timestamp
+
+min_rows: 1
+freshness_hours: 24

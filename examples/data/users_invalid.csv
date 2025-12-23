@@ -1,0 +1,5 @@
+user_id,email,name,age,country,status,created_at
+1,invalid-email,John Doe,32,USA,active,2024-01-15 10:30:00
+2,jane.smith@example.com,Jane Smith,-5,Canada,active,2024-02-20 14:45:00
+3,bob.wilson@example.com,Bob Wilson,45,UK,unknown_status,2024-03-10 09:15:00
+1,duplicate@example.com,Duplicate User,30,France,active,2024-04-01 12:00:00

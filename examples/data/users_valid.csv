@@ -1,0 +1,6 @@
+user_id,email,name,age,country,status,created_at
+1,john.doe@example.com,John Doe,32,USA,active,2024-01-15 10:30:00
+2,jane.smith@example.com,Jane Smith,28,Canada,active,2024-02-20 14:45:00
+3,bob.wilson@example.com,Bob Wilson,45,UK,inactive,2024-03-10 09:15:00
+4,alice.jones@example.com,Alice Jones,35,Australia,pending,2024-04-05 16:00:00
+5,charlie.brown@example.com,Charlie Brown,52,Germany,active,2024-05-12 11:20:00
