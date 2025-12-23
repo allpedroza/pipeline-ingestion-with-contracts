@@ -8,12 +8,16 @@ import typer
 from rich.console import Console
 
 from pipeline_contracts.contracts.registry import ContractRegistry
+from pipeline_contracts.agents.cli import app as agent_app
 
 app = typer.Typer(
     name="pipeline",
     help="Pipeline ingestion framework with data contracts",
 )
 console = Console()
+
+# Add the agent subcommand
+app.add_typer(agent_app, name="agent", help="Agente interativo para criação de contratos")
 
 
 @app.command()
