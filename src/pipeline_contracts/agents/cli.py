@@ -175,6 +175,88 @@ freshness_hours: 1
     console.print(example_yaml)
 
 
+@app.command("ai")
+def ai_create(
+    output_dir: Optional[Path] = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Diretório de saída para o contrato (padrão: ./contracts)",
+    ),
+    description: Optional[str] = typer.Option(
+        None,
+        "--description",
+        "-d",
+        help="Descrição do contrato (modo não-interativo)",
+    ),
+    model: str = typer.Option(
+        "claude-3-5-haiku-latest",
+        "--model",
+        "-m",
+        help="Modelo Claude a usar (haiku é mais rápido e barato)",
+    ),
+) -> None:
+    """
+    🤖 Cria contratos usando IA (Claude).
+
+    Descreva seu caso de uso em linguagem natural e o agente
+    sugere campos, tipos e validações automaticamente.
+
+    Requer: ANTHROPIC_API_KEY configurada como variável de ambiente.
+
+    Exemplos:
+        pipeline agent ai
+        pipeline agent ai -d "dados de pedidos e-commerce"
+        pipeline agent ai --model claude-3-5-sonnet-latest
+    """
+    try:
+        from .llm_session import LLMContractSession
+    except ImportError:
+        console.print(
+            "[red]Erro: Biblioteca 'anthropic' não instalada.[/red]\n"
+            "[yellow]Instale com:[/yellow] pip install anthropic\n"
+            "[yellow]Ou:[/yellow] pip install pipeline-contracts[llm]"
+        )
+        raise typer.Exit(code=1)
+
+    import os
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        console.print(
+            "[red]Erro: ANTHROPIC_API_KEY não configurada.[/red]\n\n"
+            "[yellow]Configure sua API key:[/yellow]\n"
+            "  export ANTHROPIC_API_KEY='sk-ant-...'  # Linux/Mac\n"
+            "  set ANTHROPIC_API_KEY=sk-ant-...      # Windows\n\n"
+            "[dim]Obtenha sua chave em: https://console.anthropic.com/[/dim]"
+        )
+        raise typer.Exit(code=1)
+
+    output_path = output_dir or Path("contracts")
+
+    try:
+        session = LLMContractSession(
+            output_dir=output_path,
+            model=model,
+        )
+
+        if description:
+            # Non-interactive mode
+            _, result = session.generate_from_description(description)
+        else:
+            # Interactive mode
+            result = session.run()
+
+        if result:
+            console.print(f"\n[bold green]✅ Contrato criado com sucesso![/bold green]")
+            console.print(f"[dim]Arquivo: {result}[/dim]")
+
+    except ValueError as e:
+        console.print(f"[red]Erro: {e}[/red]")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[red]Erro inesperado: {e}[/red]")
+        raise typer.Exit(code=1)
+
+
 def main() -> None:
     """Entry point for the CLI."""
     app()

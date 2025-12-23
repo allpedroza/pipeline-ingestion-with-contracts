@@ -1,4 +1,4 @@
-.PHONY: setup install dev test lint format clean help venv agent
+.PHONY: setup install dev test lint format clean help venv agent agent-ai
 
 # Variáveis
 VENV := .venv
@@ -58,8 +58,11 @@ typecheck: ## Executa verificação de tipos com mypy
 
 check: lint typecheck ## Executa lint e typecheck
 
-agent: ## Inicia o agente de criação de contratos
+agent: ## Inicia o agente de criação de contratos (baseado em regras)
 	$(PYTHON) -m pipeline_contracts.agents.cli create
+
+agent-ai: ## Inicia o agente AI (Claude) para criação de contratos
+	$(PYTHON) -m pipeline_contracts.agents.cli ai
 
 agent-help: ## Mostra ajuda do agente
 	$(PYTHON) -m pipeline_contracts.agents.cli --help
