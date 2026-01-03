@@ -63,6 +63,17 @@ class ContractCreatorAgent:
 
     def process_metadata(self, answers: dict) -> None:
         """Process metadata answers and initialize contract definition."""
+        previous_fields: list[FieldDefinition] = []
+        previous_integrity: dict[str, Optional[int]] = {}
+
+        if self.contract_def is not None:
+            previous_fields = self.contract_def.fields
+            previous_integrity = {
+                "min_rows": self.contract_def.min_rows,
+                "max_rows": self.contract_def.max_rows,
+                "freshness_hours": self.contract_def.freshness_hours,
+            }
+
         # Handle custom domain
         domain = answers.get("domain", "")
         if domain == "outro" and answers.get("domain_custom"):
@@ -81,6 +92,14 @@ class ContractCreatorAgent:
             domain=domain,
             tags=tags,
         )
+
+        if previous_fields:
+            self.contract_def.fields = previous_fields
+
+        if previous_integrity:
+            self.contract_def.min_rows = previous_integrity.get("min_rows")
+            self.contract_def.max_rows = previous_integrity.get("max_rows")
+            self.contract_def.freshness_hours = previous_integrity.get("freshness_hours")
 
     def process_field(self, answers: dict) -> FieldDefinition:
         """Process field answers and create a field definition."""
@@ -153,6 +172,40 @@ class ContractCreatorAgent:
 
         if answers.get("has_freshness") and answers.get("freshness_hours") is not None:
             self.contract_def.freshness_hours = int(answers["freshness_hours"])
+
+    def load_from_contract(self, contract: DataContract) -> None:
+        """Preload the agent with an existing contract for edition or duplication."""
+
+        def _copy_field(field: FieldContract) -> FieldDefinition:
+            return FieldDefinition(
+                name=field.name,
+                data_type=field.data_type.value,
+                description=field.description or "",
+                nullable=field.nullable,
+                unique=field.unique,
+                quality_level=field.quality_level.value,
+                min_value=field.min_value,
+                max_value=field.max_value,
+                min_length=field.min_length,
+                max_length=field.max_length,
+                pattern=field.pattern,
+                allowed_values=field.allowed_values,
+            )
+
+        fields = [_copy_field(field) for field in contract.fields]
+
+        self.contract_def = ContractDefinition(
+            name=contract.name,
+            version=contract.version,
+            description=contract.description or "",
+            owner=contract.owner or "",
+            domain=contract.domain or "",
+            tags=contract.tags,
+            fields=fields,
+            min_rows=contract.min_rows,
+            max_rows=contract.max_rows,
+            freshness_hours=contract.freshness_hours,
+        )
 
     def build_contract(self) -> DataContract:
         """Build a DataContract object from the collected definition."""

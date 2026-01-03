@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 import yaml
+from packaging.version import InvalidVersion, Version
 
 from pipeline_contracts.contracts.base import DataContract
 
@@ -46,7 +47,13 @@ class ContractRegistry:
         if not matching:
             return None
 
-        return max(matching, key=lambda c: c.version)
+        def version_key(contract: DataContract) -> Version:
+            try:
+                return Version(contract.version)
+            except InvalidVersion:
+                return Version("0")
+
+        return max(matching, key=version_key)
 
     def list_contracts(self) -> list[DataContract]:
         """List all registered contracts."""

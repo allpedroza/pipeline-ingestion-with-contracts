@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from pipeline_contracts.agents.contract_creator import ContractCreatorAgent
+from pipeline_contracts.agents.interactive_session import InteractiveContractSession
 from pipeline_contracts.contracts.base import (
     DataContract,
     DataType,
@@ -135,6 +137,19 @@ class TestContractRegistry:
         retrieved = registry.get("test_users", "1.0.0")
         assert retrieved is not None
 
+    def test_get_returns_latest_version(self):
+        """Registry should return the numerically latest version when none is provided."""
+        registry = ContractRegistry()
+        older = DataContract(name="orders", version="1.2.0")
+        newer = DataContract(name="orders", version="1.10.0")
+        registry.register(older)
+        registry.register(newer)
+
+        retrieved = registry.get("orders")
+
+        assert retrieved is not None
+        assert retrieved.version == "1.10.0"
+
     def test_list_contracts(self, sample_user_contract):
         """Test listing all contracts."""
         registry = ContractRegistry()
@@ -177,3 +192,106 @@ class TestContractRegistry:
         """Test removing nonexistent contract returns False."""
         registry = ContractRegistry()
         assert registry.remove("nonexistent") is False
+
+
+def test_interactive_session_prefills_latest_version(tmp_path: Path):
+    """Interactive agent should suggest the latest available contract version."""
+    existing_contracts = [
+        {
+            "name": "orders",
+            "version": "1.0.0",
+            "fields": [{"name": "id", "data_type": "integer", "nullable": False}],
+        },
+        {
+            "name": "orders",
+            "version": "2.1.0",
+            "fields": [{"name": "id", "data_type": "integer", "nullable": False}],
+        },
+    ]
+
+    for idx, contract in enumerate(existing_contracts):
+        path = tmp_path / f"orders_v{idx}.yaml"
+        path.write_text(yaml.dump(contract))
+
+    session = InteractiveContractSession(output_dir=tmp_path)
+
+    assert session._get_version_default("orders") == "2.1.0"
+
+
+def test_agent_loads_existing_contract_and_preserves_structure():
+    """Existing contracts should preload the agent and keep integrity values when metadata changes."""
+
+    existing_contract = DataContract(
+        name="orders",
+        version="1.2.3",
+        description="contrato original",
+        owner="team-a",
+        domain="commerce",
+        tags=["core"],
+        fields=[
+            FieldContract(
+                name="order_id",
+                data_type=DataType.STRING,
+                nullable=False,
+                unique=True,
+            )
+        ],
+        min_rows=10,
+        max_rows=1000,
+        freshness_hours=24,
+    )
+
+    agent = ContractCreatorAgent()
+    agent.load_from_contract(existing_contract)
+
+    assert agent.contract_def is not None
+    assert agent.contract_def.name == "orders"
+    assert len(agent.contract_def.fields) == 1
+    assert agent.contract_def.min_rows == 10
+
+    agent.process_metadata(
+        {
+            "name": "orders",
+            "version": "1.2.4",
+            "description": "contrato atualizado",
+            "owner": "team-b",
+            "domain": "commerce",
+            "tags": "core, priority",
+        }
+    )
+
+    assert len(agent.contract_def.fields) == 1
+    assert agent.contract_def.version == "1.2.4"
+    assert agent.contract_def.min_rows == 10
+    assert agent.contract_def.tags == ["core", "priority"]
+
+
+def test_interactive_session_prefill_flags_from_loaded_contract(tmp_path: Path):
+    """Prefill answers should reflect values from a loaded contract."""
+
+    contract = DataContract(
+        name="payments",
+        version="0.2.0",
+        fields=[FieldContract(name="id", data_type=DataType.INTEGER)],
+        min_rows=5,
+        freshness_hours=12,
+    )
+
+    session = InteractiveContractSession(output_dir=tmp_path)
+    session.agent.load_from_contract(contract)
+    session._build_prefill_from_contract()
+
+    assert session.prefill_answers["name"] == "payments"
+    assert session.prefill_answers["version"] == "0.2.0"
+    assert session.prefill_answers["has_min_rows"] is True
+    assert session.prefill_answers["min_rows"] == 5
+    assert session.prefill_answers["has_freshness"] is True
+    assert session.prefill_answers["freshness_hours"] == 12
+
+
+def test_interactive_session_suggests_next_patch_version(tmp_path: Path):
+    """Suggest a semantic patch bump for existing versions."""
+
+    session = InteractiveContractSession(output_dir=tmp_path)
+
+    assert session._suggest_next_version("2.3.4") == "2.3.5"
