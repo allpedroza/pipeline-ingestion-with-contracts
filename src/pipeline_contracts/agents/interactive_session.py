@@ -50,6 +50,7 @@ class InteractiveContractSession:
         self.output_dir = output_dir or Path("contracts")
         self.registry = ContractRegistry()
         self.answers: dict[str, Any] = {}
+        self.prefill_answers: dict[str, Any] = {}
         self._load_existing_contracts()
 
     def _load_existing_contracts(self) -> None:
@@ -129,7 +130,14 @@ class InteractiveContractSession:
 
         prompt_text = f"[bold cyan]{question.prompt}[/bold cyan]"
 
-        default_value = question.default(context) if callable(question.default) else question.default
+        if question.key in context:
+            default_value = context[question.key]
+        else:
+            default_value = (
+                question.default(context)
+                if callable(question.default)
+                else question.default
+            )
 
         try:
             if question.question_type == QuestionType.TEXT:
@@ -243,7 +251,7 @@ class InteractiveContractSession:
         """Collect contract metadata through interactive questions."""
         self.console.print(SECTION_METADATA)
         questions = self._prepare_metadata_questions()
-        return self._ask_questions(questions)
+        return self._ask_questions(questions, self.prefill_answers)
 
     def _collect_field(self, field_number: int) -> Optional[dict]:
         """Collect a single field definition."""
@@ -271,12 +279,12 @@ class InteractiveContractSession:
 
         return answers
 
-    def _collect_fields(self) -> list[dict]:
+    def _collect_fields(self, start_number: int = 1) -> list[dict]:
         """Collect all field definitions."""
         self.console.print(SECTION_FIELDS)
 
         fields = []
-        field_number = 1
+        field_number = start_number
 
         while True:
             if field_number > 1:
@@ -304,7 +312,123 @@ class InteractiveContractSession:
     def _collect_integrity(self) -> dict:
         """Collect integrity/SLA rules."""
         self.console.print(SECTION_INTEGRITY)
-        return self._ask_questions(INTEGRITY_QUESTIONS)
+        return self._ask_questions(INTEGRITY_QUESTIONS, self.prefill_answers)
+
+    def _build_prefill_from_contract(self) -> None:
+        """Populate prefill answers with the content of the loaded contract."""
+        if not self.agent.contract_def:
+            return
+
+        contract = self.agent.contract_def
+
+        self.prefill_answers.update(
+            {
+                "name": contract.name,
+                "version": contract.version,
+                "description": contract.description,
+                "owner": contract.owner,
+                "domain": contract.domain,
+                "tags": ", ".join(contract.tags) if contract.tags else None,
+                "has_min_rows": contract.min_rows is not None,
+                "min_rows": contract.min_rows,
+                "has_max_rows": contract.max_rows is not None,
+                "max_rows": contract.max_rows,
+                "has_freshness": contract.freshness_hours is not None,
+                "freshness_hours": contract.freshness_hours,
+            }
+        )
+
+    def _suggest_next_version(self, version: str) -> str:
+        """Return the next patch version for a given version string."""
+        try:
+            parsed = Version(version)
+            bumped = Version(f"{parsed.major}.{parsed.minor}.{parsed.micro + 1}")
+            return str(bumped)
+        except InvalidVersion:
+            return version
+
+    def _select_existing_contract(self) -> Optional[Any]:
+        """Allow the user to load an existing contract as a starting point."""
+        contracts = self.registry.list_contracts()
+        if not contracts:
+            return None
+
+        self.console.print(
+            "\n[bold]Contratos existentes foram encontrados. Deseja carregar um como base?[/bold]"
+        )
+
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("#")
+        table.add_column("Nome")
+        table.add_column("Versão")
+
+        def _version_key(contract: Any) -> tuple[str, Version]:
+            try:
+                version_obj = Version(contract.version)
+            except InvalidVersion:
+                version_obj = Version("0")
+            return (contract.name, version_obj)
+
+        sorted_contracts = sorted(contracts, key=_version_key)
+
+        for idx, contract in enumerate(sorted_contracts, 1):
+            table.add_row(str(idx), contract.name, contract.version)
+
+        self.console.print(table)
+
+        if not Confirm.ask(
+            "Deseja usar um contrato existente como ponto de partida?", default=True
+        ):
+            return None
+
+        while True:
+            selected = IntPrompt.ask(
+                "Selecione o número do contrato para carregar", default=1
+            )
+            if 1 <= selected <= len(sorted_contracts):
+                return sorted_contracts[selected - 1]
+
+            self.console.print("[red]Número inválido. Tente novamente.[/red]")
+
+    def _handle_existing_fields(self) -> int:
+        """Show already loaded fields and ask whether to keep them."""
+        if not self.agent.contract_def or not self.agent.contract_def.fields:
+            return 1
+
+        fields = self.agent.contract_def.fields
+
+        field_table = Table(show_header=True, header_style="bold magenta")
+        field_table.add_column("Campo")
+        field_table.add_column("Tipo")
+        field_table.add_column("Nulo")
+        field_table.add_column("Único")
+
+        for field in fields:
+            field_table.add_row(
+                field.name,
+                field.data_type,
+                "Sim" if field.nullable else "Não",
+                "Sim" if field.unique else "Não",
+            )
+
+        self.console.print(
+            "\n[bold]Campos carregados do contrato selecionado serão reutilizados:[/bold]"
+        )
+        self.console.print(field_table)
+
+        keep_fields = Confirm.ask(
+            "Deseja manter estes campos antes de adicionar novos?", default=True
+        )
+
+        if not keep_fields:
+            self.agent.contract_def.fields = []
+            return 1
+
+        self.console.print(
+            "[dim]Os campos existentes foram mantidos. Você pode adicionar novos se necessário.[/dim]"
+        )
+
+        return len(self.agent.contract_def.fields) + 1
 
     def _show_summary(self) -> None:
         """Display the contract summary."""
@@ -342,12 +466,34 @@ class InteractiveContractSession:
                 self.console.print("[yellow]Operação cancelada.[/yellow]")
                 return None
 
+            selected_contract = self._select_existing_contract()
+            if selected_contract:
+                self.agent.load_from_contract(selected_contract)
+                self._build_prefill_from_contract()
+
+                if Confirm.ask(
+                    f"Deseja atualizar a versão de '{selected_contract.name}' agora?",
+                    default=True,
+                ):
+                    suggested = self._suggest_next_version(selected_contract.version)
+                    new_version = Prompt.ask(
+                        "[bold cyan]Nova versão do contrato[/bold cyan]",
+                        default=suggested,
+                    )
+                    if self.agent.contract_def:
+                        self.agent.contract_def.version = new_version
+                    self.prefill_answers["version"] = new_version
+                else:
+                    self.prefill_answers["version"] = selected_contract.version
+
             # Section 1: Metadata
             metadata = self._collect_metadata()
             self.agent.process_metadata(metadata)
 
             # Section 2: Fields
-            fields = self._collect_fields()
+            start_number = self._handle_existing_fields()
+
+            fields = self._collect_fields(start_number)
             for field_answers in fields:
                 field_def = self.agent.process_field(field_answers)
                 self.agent.add_field(field_def)
