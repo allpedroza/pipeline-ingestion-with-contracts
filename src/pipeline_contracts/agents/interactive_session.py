@@ -14,7 +14,10 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 from rich.text import Text
 
+from packaging.version import InvalidVersion, Version
+
 from .contract_creator import ContractCreatorAgent
+from ..contracts.registry import ContractRegistry
 from .prompts import (
     ALLOWED_VALUES_QUESTIONS,
     CONTRACT_METADATA_QUESTIONS,
@@ -45,7 +48,74 @@ class InteractiveContractSession:
         self.console = Console()
         self.agent = ContractCreatorAgent()
         self.output_dir = output_dir or Path("contracts")
+        self.registry = ContractRegistry()
         self.answers: dict[str, Any] = {}
+        self._load_existing_contracts()
+
+    def _load_existing_contracts(self) -> None:
+        """Load existing contracts from the output directory if available."""
+        if not self.output_dir.exists():
+            return
+
+        if not self.output_dir.is_dir():
+            self.console.print(
+                f"[yellow]Aviso: {self.output_dir} não é um diretório. Ignorando contratos existentes.[/yellow]"
+            )
+            return
+
+        try:
+            self.registry.load_from_directory(self.output_dir)
+        except Exception as exc:  # pragma: no cover - log only
+            self.console.print(
+                f"[yellow]Aviso: não foi possível carregar contratos existentes em {self.output_dir}: {exc}[/yellow]"
+            )
+
+    def _get_version_default(self, contract_name: str | None) -> str:
+        """Return the latest version found for the contract name, falling back to 1.0.0."""
+        if not contract_name:
+            return "1.0.0"
+
+        versions: list[Version] = []
+        for contract in self.registry.list_contracts():
+            if contract.name != contract_name:
+                continue
+            try:
+                versions.append(Version(contract.version))
+            except InvalidVersion:
+                continue
+
+        if versions:
+            latest_version = str(max(versions))
+            self.console.print(
+                f"[dim]Versão atual detectada para '{contract_name}': {latest_version}. Usando como padrão.[/dim]"
+            )
+            return latest_version
+
+        return "1.0.0"
+
+    def _prepare_metadata_questions(self) -> list[Question]:
+        """Prepare metadata questions, injecting dynamic defaults when needed."""
+        questions: list[Question] = []
+
+        for question in CONTRACT_METADATA_QUESTIONS:
+            question_copy = Question(
+                key=question.key,
+                prompt=question.prompt,
+                question_type=question.question_type,
+                help_text=question.help_text,
+                choices=question.choices,
+                default=question.default,
+                validator=question.validator,
+                error_message=question.error_message,
+                condition=question.condition,
+            )
+
+            if question_copy.key == "version":
+                question_copy.default = lambda ctx: self._get_version_default(ctx.get("name"))
+
+            questions.append(question_copy)
+
+        return questions
 
     def _ask_question(self, question: Question, context: dict) -> Any:
         """Ask a single question and return the answer."""
@@ -59,10 +129,12 @@ class InteractiveContractSession:
 
         prompt_text = f"[bold cyan]{question.prompt}[/bold cyan]"
 
+        default_value = question.default(context) if callable(question.default) else question.default
+
         try:
             if question.question_type == QuestionType.TEXT:
                 while True:
-                    answer = Prompt.ask(prompt_text, default=question.default or "")
+                    answer = Prompt.ask(prompt_text, default=default_value or "")
                     if question.validator:
                         if question.validator(answer):
                             return answer
@@ -74,14 +146,17 @@ class InteractiveContractSession:
                         return answer
 
             elif question.question_type == QuestionType.OPTIONAL_TEXT:
-                answer = Prompt.ask(prompt_text, default=question.default or "")
+                answer = Prompt.ask(prompt_text, default=default_value or "")
                 return answer if answer else None
 
             elif question.question_type == QuestionType.NUMBER:
-                return IntPrompt.ask(prompt_text, default=question.default)
+                return IntPrompt.ask(prompt_text, default=default_value)
 
             elif question.question_type == QuestionType.OPTIONAL_NUMBER:
-                answer = Prompt.ask(prompt_text, default=str(question.default) if question.default else "")
+                answer = Prompt.ask(
+                    prompt_text,
+                    default=str(default_value) if default_value else "",
+                )
                 if answer:
                     try:
                         return int(answer)
@@ -93,7 +168,7 @@ class InteractiveContractSession:
                 return None
 
             elif question.question_type == QuestionType.BOOLEAN:
-                default_bool = question.default if question.default is not None else False
+                default_bool = default_value if default_value is not None else False
                 return Confirm.ask(prompt_text, default=default_bool)
 
             elif question.question_type == QuestionType.CHOICE:
@@ -104,7 +179,7 @@ class InteractiveContractSession:
                 while True:
                     choice_input = Prompt.ask(
                         "[dim]Digite o número ou nome da opção[/dim]",
-                        default=question.default or "",
+                        default=default_value or "",
                     )
 
                     # Try to parse as number
@@ -151,7 +226,7 @@ class InteractiveContractSession:
             self.console.print("\n[yellow]Operação cancelada pelo usuário.[/yellow]")
             raise
 
-        return question.default
+        return default_value
 
     def _ask_questions(self, questions: list[Question], context: Optional[dict] = None) -> dict:
         """Ask a list of questions and collect answers."""
@@ -167,7 +242,8 @@ class InteractiveContractSession:
     def _collect_metadata(self) -> dict:
         """Collect contract metadata through interactive questions."""
         self.console.print(SECTION_METADATA)
-        return self._ask_questions(CONTRACT_METADATA_QUESTIONS)
+        questions = self._prepare_metadata_questions()
+        return self._ask_questions(questions)
 
     def _collect_field(self, field_number: int) -> Optional[dict]:
         """Collect a single field definition."""

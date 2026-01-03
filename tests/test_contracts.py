@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from pipeline_contracts.agents.interactive_session import InteractiveContractSession
 from pipeline_contracts.contracts.base import (
     DataContract,
     DataType,
@@ -135,6 +136,19 @@ class TestContractRegistry:
         retrieved = registry.get("test_users", "1.0.0")
         assert retrieved is not None
 
+    def test_get_returns_latest_version(self):
+        """Registry should return the numerically latest version when none is provided."""
+        registry = ContractRegistry()
+        older = DataContract(name="orders", version="1.2.0")
+        newer = DataContract(name="orders", version="1.10.0")
+        registry.register(older)
+        registry.register(newer)
+
+        retrieved = registry.get("orders")
+
+        assert retrieved is not None
+        assert retrieved.version == "1.10.0"
+
     def test_list_contracts(self, sample_user_contract):
         """Test listing all contracts."""
         registry = ContractRegistry()
@@ -177,3 +191,27 @@ class TestContractRegistry:
         """Test removing nonexistent contract returns False."""
         registry = ContractRegistry()
         assert registry.remove("nonexistent") is False
+
+
+def test_interactive_session_prefills_latest_version(tmp_path: Path):
+    """Interactive agent should suggest the latest available contract version."""
+    existing_contracts = [
+        {
+            "name": "orders",
+            "version": "1.0.0",
+            "fields": [{"name": "id", "data_type": "integer", "nullable": False}],
+        },
+        {
+            "name": "orders",
+            "version": "2.1.0",
+            "fields": [{"name": "id", "data_type": "integer", "nullable": False}],
+        },
+    ]
+
+    for idx, contract in enumerate(existing_contracts):
+        path = tmp_path / f"orders_v{idx}.yaml"
+        path.write_text(yaml.dump(contract))
+
+    session = InteractiveContractSession(output_dir=tmp_path)
+
+    assert session._get_version_default("orders") == "2.1.0"
